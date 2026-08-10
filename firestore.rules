@@ -76,10 +76,12 @@ service cloud.firestore {
       return exists(blockDoc(other, request.auth.uid));
     }
 
-    // Only allow member writes that touch ephemeral list fields.
+    // Only allow member writes that touch ephemeral list fields. Members may
+    // bump lastActivityAt (to reorder the home list) and lastRead (to mark
+    // read state) as well as the expiring preview.
     function validConversationMemberUpdate(conversationId) {
       let affected = request.resource.data.diff(resource.data).affectedKeys();
-      return affected.hasOnly(['lastRead', 'ephemeralLastMessage']);
+      return affected.hasOnly(['lastRead', 'ephemeralLastMessage', 'lastActivityAt', 'updatedAt']);
     }
 
     // Media type + size validation for messages/statuses.
