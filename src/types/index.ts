@@ -116,6 +116,7 @@ export interface Message {
   text?: string
   caption?: string
   mediaPath?: string
+  mediaURL?: string
   mediaType?: string
   mediaWidth?: number
   mediaHeight?: number

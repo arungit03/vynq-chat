@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Info } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Avatar } from '@/components/ui/Avatar'
@@ -12,6 +12,7 @@ import { usePublicProfile } from '@/hooks/usePublicProfile'
 import { markConversationRead } from '@/services/messages'
 import { formatDayLabel } from '@/lib/dates'
 import { MessageBubble } from '@/components/chat/MessageBubble'
+import { MediaViewer } from '@/components/chat/MediaViewer'
 import { Composer } from '@/components/chat/Composer'
 import type { Message } from '@/types'
 
@@ -43,6 +44,9 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   const { profile } = usePublicProfile(otherUid)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
+  const [viewerMessage, setViewerMessage] = useState<Message | null>(null)
+
+  const openMedia = useCallback((m: Message) => setViewerMessage(m), [])
 
   // Auto-scroll to bottom on new messages (only when the user is near bottom).
   useEffect(() => {
@@ -131,7 +135,7 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
                   </span>
                 </div>
               ) : (
-                <MessageBubble key={row.key} message={row.message!} />
+                <MessageBubble key={row.key} message={row.message!} onOpenMedia={openMedia} />
               ),
             )}
           </div>
@@ -139,6 +143,8 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
       </div>
 
       <Composer conversationId={conversationId} />
+
+      <MediaViewer message={viewerMessage} onClose={() => setViewerMessage(null)} />
     </div>
   )
 }

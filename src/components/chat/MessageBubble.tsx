@@ -3,15 +3,36 @@
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/dates'
 import { useAuth } from '@/features/auth/auth-provider'
+import { MediaMessage } from '@/components/chat/MediaMessage'
 import type { Message } from '@/types'
+
+export interface MessageBubbleProps {
+  message: Message
+  onOpenMedia?: (message: Message) => void
+}
 
 /**
  * A single message bubble. Mine are right-aligned with a brand background,
- * theirs left-aligned on the raised surface. Media types render inline.
+ * theirs left-aligned on the raised surface. Media types render inline and
+ * tap through to the fullscreen viewer.
  */
-export function MessageBubble({ message }: { message: Message }) {
+export function MessageBubble({ message, onOpenMedia }: MessageBubbleProps) {
   const { user } = useAuth()
   const mine = message.senderId === user?.uid
+  const isMedia = message.type === 'image' || message.type === 'video'
+
+  if (isMedia && message.mediaURL) {
+    return (
+      <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+        <div className={cn('flex max-w-[82%] flex-col', mine ? 'items-end' : 'items-start')}>
+          <MediaMessage message={message} onOpen={(m) => onOpenMedia?.(m)} />
+          <p className={cn('mt-1 px-1 text-[10px] leading-none', mine ? 'text-ink-muted' : 'text-ink-muted')}>
+            {formatTime(message.createdAt)}
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
@@ -23,8 +44,8 @@ export function MessageBubble({ message }: { message: Message }) {
             : 'rounded-bl-md border border-border-subtle bg-surface-elevated text-ink',
         )}
       >
-        {message.type === 'text' || message.caption ? (
-          <p className="whitespace-pre-wrap break-words">{message.text ?? message.caption}</p>
+        {message.text ? (
+          <p className="whitespace-pre-wrap break-words">{message.text}</p>
         ) : null}
         <p
           className={cn(
