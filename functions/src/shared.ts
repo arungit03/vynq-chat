@@ -47,11 +47,16 @@ export function fail(code: HttpsErrorCode, message: string): never {
  * Returns the caller's uid.
  */
 export function requireVerified(request: CallableRequest): string {
-  if (!request.auth) fail('unauthenticated', 'You must be signed in')
-  const uid = request.auth.uid
-  const emailVerified = request.auth.token?.email_verified === true
+  const uid = requireAuth(request)
+  const emailVerified = request.auth?.token?.email_verified === true
   if (!emailVerified) fail('permission-denied', 'Verify your email first')
   return uid
+}
+
+/** Returns the caller's uid or throws unauthenticated. */
+export function requireAuth(request: CallableRequest): string {
+  if (!request.auth) fail('unauthenticated', 'You must be signed in')
+  return request.auth.uid
 }
 
 /** Standard callable options. */

@@ -7,6 +7,7 @@
 import { getFirebaseAuth } from '@/lib/firebase/client'
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   reload,
   sendEmailVerification,
   sendPasswordResetEmail,
@@ -72,4 +73,12 @@ export async function sendPasswordReset(email: string): Promise<void> {
 
 export async function logout(): Promise<void> {
   await signOut(getFirebaseAuth())
+}
+
+/** Remove the current auth account (used to roll back a partial registration). */
+export async function deleteAuthUser(): Promise<void> {
+  const auth = getFirebaseAuth()
+  if (auth.currentUser) {
+    await deleteUser(auth.currentUser)
+  }
 }

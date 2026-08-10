@@ -8,10 +8,11 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string
   hint?: string
   leftIcon?: ReactNode
+  rightSlot?: ReactNode
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, hint, leftIcon, className, id, ...props },
+  { label, error, hint, leftIcon, rightSlot, className, id, ...props },
   ref,
 ) {
   const autoId = useId()
@@ -38,11 +39,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             'placeholder:text-ink-muted/60 transition-colors duration-150',
             'focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20',
             leftIcon && 'pl-10',
+            rightSlot && 'pr-10',
             error && 'border-danger focus:border-danger focus:ring-danger/20',
             className,
           )}
           {...props}
         />
+        {rightSlot && (
+          <span className="absolute right-1.5 top-1/2 -translate-y-1/2">{rightSlot}</span>
+        )}
       </div>
       {error ? (
         <p className="mt-1.5 text-xs font-medium text-danger" role="alert">

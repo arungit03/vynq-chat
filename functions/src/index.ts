@@ -13,3 +13,6 @@ export const ping = functions.https.onCall(callableOptions, (request) => {
   const uid = requireVerified(request)
   return { ok: true, uid }
 })
+
+// ── Usernames ────────────────────────────────────────────────
+export { reserveUsername, changeUsername } from './usernames'
