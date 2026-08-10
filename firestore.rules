@@ -1,0 +1,234 @@
+// =====================================================================
+// A3Chat — Cloud Firestore Security Rules
+//
+// Privacy model: verified users can only reach data they are entitled to.
+//  • users/            private identity  → owner read only, functions write
+//  • publicProfiles/   searchable info   → signed-in read, owner write
+//  • usernames/        uniqueness        → single-doc lookup only
+//  • friendRequests/   client read only, functions mutate (server-validated)
+//  • friendships/      client read only, functions write
+//  • conversations/    members read; members update lastRead/preview
+//  • messages/         members read; sender create; sender delete (no media)
+//  • statuses/         owner + connections read
+//  • blocks/           blocker/blocked read, blocker create
+// =====================================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ───────────────────────────────────────────────
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Verified users are the only actors allowed into protected data.
+    // Relies on the email_verified ID-token claim, with a fallback to the
+    // users/{uid} record (useful for emulator/tests).
+    function verified() {
+      return signedIn() && (
+        request.auth.token.email_verified == true ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.emailVerified == true
+        )
+      );
+    }
+
+    // Sorted pair key used for friendships and conversations.
+    function pairKey(a, b) {
+      return a < b ? a + '_' + b : b + '_' + a;
+    }
+
+    // A block doc lives at blocks/{blockerId}_{blockedId}.
+    function blockDoc(blockerId, blockedId) {
+      return /databases/$(database)/documents/blocks/$(blockerId + '_' + blockedId);
+    }
+
+    // True if either user has blocked the other.
+    function blockedBetween(a, b) {
+      return exists(blockDoc(a, b)) || exists(blockDoc(b, a));
+    }
+
+    // True if a current-user relationship exists (friendship accepted).
+    function isConnected(a, b) {
+      return exists(/databases/$(database)/documents/friendships/$(pairKey(a, b)));
+    }
+
+    function conversationDoc(id) {
+      return get(/databases/$(database)/documents/conversations/$(id));
+    }
+
+    function isConversationMember(conversationId, uid) {
+      return exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+        uid in conversationDoc(conversationId).data.members;
+    }
+
+    // The conversation member who is NOT uid.
+    function otherMember(conversationId, uid) {
+      let members = conversationDoc(conversationId).data.members;
+      return members[0] == uid ? members[1] : members[0];
+    }
+
+    // True if the other conversation member has blocked the current user.
+    function blockedByOtherMember(conversationId) {
+      let other = otherMember(conversationId, request.auth.uid);
+      return exists(blockDoc(other, request.auth.uid));
+    }
+
+    // Only allow member writes that touch ephemeral list fields.
+    function validConversationMemberUpdate(conversationId) {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly(['lastRead', 'ephemeralLastMessage']);
+    }
+
+    // Media type + size validation for messages/statuses.
+    function isAllowedImage(mimeType) {
+      return mimeType in ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    }
+    function isAllowedVideo(mimeType) {
+      return mimeType in ['video/mp4', 'video/webm'];
+    }
+
+    // ── usernames: unique reservation registry ────────────────
+    // Single-document lookup only (availability check). No list queries,
+    // so the registry cannot be bulk-enumerated.
+    match /usernames/{normalizedUsername} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update, delete: if false; // functions only
+    }
+
+    // ── users: private identity (functions write) ─────────────
+    match /users/{uid} {
+      allow read: if verified() && request.auth.uid == uid;
+      allow create, update, delete: if false; // functions only
+    }
+
+    // ── userSettings: personal preferences ────────────────────
+    match /userSettings/{uid} {
+      allow read, write: if verified() && request.auth.uid == uid;
+    }
+
+    // ── publicProfiles: searchable social info ────────────────
+    match /publicProfiles/{uid} {
+      allow read: if signedIn();
+      allow create: if verified() && request.auth.uid == uid &&
+        request.resource.data.uid == uid &&
+        request.resource.data.username is string &&
+        request.resource.data.normalizedUsername is string;
+      allow update: if verified() && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'bio', 'avatarPath', 'avatarURL']);
+      allow delete: if verified() && request.auth.uid == uid;
+    }
+
+    // ── friendRequests: client reads only ─────────────────────
+    // Sending, cancelling, accepting and rejecting all flow through Cloud
+    // Functions so the server can validate blocking, duplicates and
+    // relationships atomically (see functions/src/connections).
+    match /friendRequests/{requestId} {
+      allow read: if verified() &&
+        (resource.data.senderId == request.auth.uid ||
+         resource.data.receiverId == request.auth.uid);
+      allow create, update, delete: if false; // functions only
+    }
+
+    // ── friendships: client reads only ────────────────────────
+    match /friendships/{friendshipId} {
+      allow read: if verified() &&
+        request.auth.uid in resource.data.members;
+      allow create, update, delete: if false; // functions only
+    }
+
+    // ── blocks ────────────────────────────────────────────────
+    match /blocks/{blockId} {
+      allow read: if verified() &&
+        (resource.data.blockerId == request.auth.uid ||
+         resource.data.blockedId == request.auth.uid);
+      allow create: if verified() &&
+        request.resource.data.blockerId == request.auth.uid &&
+        request.resource.data.blockedId != request.auth.uid &&
+        blockId == request.auth.uid + '_' + request.resource.data.blockedId;
+      allow update, delete: if false; // unblock via functions
+    }
+
+    // ── conversations ─────────────────────────────────────────
+    match /conversations/{conversationId} {
+      allow read: if verified() && isConversationMember(conversationId, request.auth.uid);
+      allow create: if false; // created by acceptFriendRequest function
+      allow update: if verified() &&
+        isConversationMember(conversationId, request.auth.uid) &&
+        validConversationMemberUpdate(conversationId);
+      allow delete: if false;
+
+      // Messages
+      match /messages/{messageId} {
+        allow read: if verified() &&
+          isConversationMember(conversationId, request.auth.uid);
+        allow create: if verified() &&
+          isConversationMember(conversationId, request.auth.uid) &&
+          !blockedByOtherMember(conversationId) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.conversationId == conversationId &&
+          request.resource.data.createdAt != null &&
+          request.resource.data.expiresAt != null;
+        allow update: if verified() &&
+          isConversationMember(conversationId, request.auth.uid) &&
+          !blockedByOtherMember(conversationId) &&
+          (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['reactions']) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['editedAt', 'text', 'status', 'reactions']) &&
+              resource.data.senderId == request.auth.uid
+            )
+          );
+        allow delete: if verified() &&
+          isConversationMember(conversationId, request.auth.uid) &&
+          resource.data.senderId == request.auth.uid &&
+          resource.data.mediaPath == null; // media messages deleted via function
+      }
+
+      // Typing indicators (ephemeral, self-keyed, expire via cleanup)
+      match /typing/{uid} {
+        allow read: if verified() && isConversationMember(conversationId, request.auth.uid);
+        allow create, update: if verified() &&
+          isConversationMember(conversationId, request.auth.uid) &&
+          uid == request.auth.uid &&
+          request.resource.data.expiresAt != null;
+        allow delete: if verified() && uid == request.auth.uid;
+      }
+    }
+
+    // ── statuses ──────────────────────────────────────────────
+    match /statuses/{statusId} {
+      function owner() {
+        return resource.data.ownerId == request.auth.uid;
+      }
+
+      allow read: if verified() &&
+        (owner() ||
+         (isConnected(request.auth.uid, resource.data.ownerId) &&
+          !blockedBetween(request.auth.uid, resource.data.ownerId)));
+      allow create: if verified() &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.expiresAt != null &&
+        (isAllowedImage(request.resource.data.mediaType) ||
+         isAllowedVideo(request.resource.data.mediaType));
+      allow update: if verified() && owner();
+      allow delete: if verified() && owner();
+
+      // Status views — writer-only, owner-read, expire with the status.
+      match /views/{viewerId} {
+        allow read: if verified() && owner();
+        allow create: if verified() &&
+          viewerId == request.auth.uid &&
+          request.resource.data.viewerId == request.auth.uid &&
+          isConnected(request.auth.uid, get(/databases/$(database)/documents/statuses/$(statusId)).data.ownerId);
+        allow update, delete: if false;
+      }
+    }
+  }
+}

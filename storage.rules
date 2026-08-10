@@ -1,0 +1,81 @@
+// =====================================================================
+// A3Chat — Cloud Storage Security Rules
+//
+// Every upload is constrained by authentication, ownership/membership,
+// a strict MIME whitelist and a maximum size. Never public-writable.
+// =====================================================================
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function verified() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isImage() {
+      return request.resource.contentType in [
+        'image/jpeg', 'image/png', 'image/webp', 'image/gif'
+      ];
+    }
+
+    function isVideo() {
+      return request.resource.contentType in [
+        'video/mp4', 'video/webm', 'video/quicktime'
+      ];
+    }
+
+    // ── Avatars ────────────────────────────────────────────────
+    match /avatars/{uid}/{filename} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if verified() &&
+        request.auth.uid == uid &&
+        isImage() &&
+        request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // ── Chat media ─────────────────────────────────────────────
+    // Path: chatMedia/{conversationId}/{messageId}/{filename}
+    match /chatMedia/{conversationId}/{messageId}/{filename} {
+      function isMember() {
+        return request.auth.uid in firestore
+          .get(/databases/(default)/documents/conversations/$(conversationId))
+          .data.members;
+      }
+
+      allow read: if signedIn() && isMember();
+      allow write: if verified() &&
+        isMember() &&
+        (
+          (isImage() && request.resource.size < 10 * 1024 * 1024) ||
+          (isVideo() && request.resource.size < 60 * 1024 * 1024)
+        );
+    }
+
+    // ── Status media ───────────────────────────────────────────
+    // Path: statusMedia/{userId}/{statusId}/{filename}
+    match /statusMedia/{userId}/{statusId}/{filename} {
+      function isFriend(a, b) {
+        return firestore.exists(/databases/(default)/documents/friendships/$(a + '_' + b)) ||
+               firestore.exists(/databases/(default)/documents/friendships/$(b + '_' + a));
+      }
+
+      function canAccessStatus() {
+        return request.auth.uid == userId ||
+               (signedIn() && isFriend(request.auth.uid, userId));
+      }
+
+      allow read: if canAccessStatus();
+      allow write: if verified() &&
+        request.auth.uid == userId &&
+        (
+          (isImage() && request.resource.size < 10 * 1024 * 1024) ||
+          (isVideo() && request.resource.size < 60 * 1024 * 1024)
+        );
+    }
+  }
+}
