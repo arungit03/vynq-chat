@@ -59,6 +59,8 @@ export const MAX_CHAT_VIDEO_DURATION_S = 60
 export const MAX_STATUS_IMAGE_SIZE = 10 * 1024 * 1024 // 10 MB
 export const MAX_STATUS_VIDEO_SIZE = 60 * 1024 * 1024 // 60 MB
 export const MAX_STATUS_VIDEO_DURATION_S = 30 // 30-second rule
+/** How long an image status stays on screen in the viewer (videos use their own length). */
+export const STATUS_IMAGE_DURATION_MS = 5_000
 
 export const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 export const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime'])

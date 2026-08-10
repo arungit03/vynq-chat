@@ -141,7 +141,9 @@ export interface TypingDoc {
 export interface Status {
   id: string
   ownerId: string
+  type: MessageType
   mediaPath: string
+  mediaURL?: string
   mediaType: string
   mediaWidth?: number
   mediaHeight?: number
