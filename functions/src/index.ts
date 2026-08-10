@@ -16,3 +16,11 @@ export const ping = functions.https.onCall(callableOptions, (request) => {
 
 // ── Usernames ────────────────────────────────────────────────
 export { reserveUsername, changeUsername } from './usernames'
+
+// ── Connections ──────────────────────────────────────────────
+export {
+  sendFriendRequest,
+  acceptFriendRequest,
+  cancelFriendRequest,
+  rejectFriendRequest,
+} from './connections'
