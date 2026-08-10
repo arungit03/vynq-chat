@@ -24,3 +24,6 @@ export {
   cancelFriendRequest,
   rejectFriendRequest,
 } from './connections'
+
+// ── Expiry / cleanup ─────────────────────────────────────────
+export { cleanupExpiredContent } from './cleanup'
