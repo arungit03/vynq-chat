@@ -30,8 +30,10 @@ service firebase.storage {
     }
 
     // ── Avatars ────────────────────────────────────────────────
+    // Public within the app (mirrors publicProfiles): any signed-in user
+    // may view avatars; only the owner uploads/replaces/deletes their own.
     match /avatars/{uid}/{filename} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn();
       allow write: if verified() &&
         request.auth.uid == uid &&
         isImage() &&
