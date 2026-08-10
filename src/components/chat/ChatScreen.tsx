@@ -9,12 +9,15 @@ import { useAuth } from '@/features/auth/auth-provider'
 import { useConversation } from '@/hooks/useConversation'
 import { useMessages } from '@/hooks/useMessages'
 import { usePublicProfile } from '@/hooks/usePublicProfile'
+import { usePeerTyping } from '@/hooks/usePeerTyping'
 import { markConversationRead } from '@/services/messages'
-import { formatDayLabel } from '@/lib/dates'
-import { MessageBubble } from '@/components/chat/MessageBubble'
+import { toggleReaction } from '@/services/reactions'
+import { useToast } from '@/components/ui/Toast'
+import { formatDayLabel, toMillis } from '@/lib/dates'
+import { MessageBubble, replyPreviewFor } from '@/components/chat/MessageBubble'
 import { MediaViewer } from '@/components/chat/MediaViewer'
 import { Composer } from '@/components/chat/Composer'
-import type { Message } from '@/types'
+import type { Message, ReplyRef } from '@/types'
 
 function dateSeparators(messages: Message[]): Array<{ key: string; kind: 'date' | 'message'; message?: Message; label?: string }> {
   const rows: Array<{ key: string; kind: 'date' | 'message'; message?: Message; label?: string }> = []
@@ -31,22 +34,45 @@ function dateSeparators(messages: Message[]): Array<{ key: string; kind: 'date' 
 }
 
 /**
- * Full chat screen: header (peer info), scrollable message list with date
- * separators, and the composer. Also marks the conversation read on load.
+ * Full chat screen: header (peer info + typing state), scrollable message
+ * list with date separators, and the composer. Handles replies, reactions and
+ * the outgoing sent/seen indicator; marks the conversation read on load.
  */
 export function ChatScreen({ conversationId }: { conversationId: string }) {
   const router = useRouter()
+  const toast = useToast()
   const { user } = useAuth()
   const myUid = user?.uid ?? ''
   const { conversation } = useConversation(conversationId)
   const { messages, loading, loadingOlder, hasMore, loadOlder } = useMessages(conversationId)
   const otherUid = conversation?.members.find((m) => m !== myUid) ?? ''
   const { profile } = usePublicProfile(otherUid)
+  const peerTyping = usePeerTyping(conversationId, otherUid || null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
   const [viewerMessage, setViewerMessage] = useState<Message | null>(null)
+  const [replyTo, setReplyTo] = useState<ReplyRef | null>(null)
 
   const openMedia = useCallback((m: Message) => setViewerMessage(m), [])
+
+  const openReply = useCallback((m: Message) => {
+    setReplyTo({
+      messageId: m.id,
+      senderId: m.senderId,
+      type: m.type,
+      preview: replyPreviewFor(m),
+    })
+  }, [])
+
+  const react = useCallback(
+    (m: Message, emoji: string) => {
+      if (!myUid) return
+      toggleReaction(conversationId, m.id, myUid, emoji, m.reactions).catch(() => {
+        toast.error('Could not save reaction — try again.')
+      })
+    },
+    [conversationId, myUid, toast],
+  )
 
   // Auto-scroll to bottom on new messages (only when the user is near bottom).
   useEffect(() => {
@@ -61,6 +87,17 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
     if (!conversationId || !myUid) return
     markConversationRead(conversationId, myUid).catch(() => undefined)
   }, [conversationId, myUid])
+
+  // Sent/seen: an outgoing message is "seen" once the peer's lastRead passes
+  // its createdAt. Read-receipt preferences are enforced in P11 (settings).
+  const peerLastRead = conversation?.lastRead?.[otherUid]
+  const seenFor = useCallback(
+    (m: Message): boolean => {
+      if (m.senderId !== myUid || !peerLastRead) return false
+      return toMillis(peerLastRead) >= toMillis(m.createdAt)
+    },
+    [myUid, peerLastRead],
+  )
 
   const rows = dateSeparators(messages)
 
@@ -83,7 +120,15 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
           <p className="truncate text-sm font-semibold text-ink">
             {profile?.displayName ?? profile?.username ?? '…'}
           </p>
-          <p className="truncate text-xs text-ink-muted">@{profile?.username ?? '…'}</p>
+          <p className="truncate text-xs text-ink-muted">
+            {peerTyping ? (
+              <span className="font-medium text-brand">typing…</span>
+            ) : profile?.username ? (
+              `@${profile.username}`
+            ) : (
+              '…'
+            )}
+          </p>
         </div>
         <button
           aria-label="Conversation info"
@@ -135,14 +180,25 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
                   </span>
                 </div>
               ) : (
-                <MessageBubble key={row.key} message={row.message!} onOpenMedia={openMedia} />
+                <MessageBubble
+                  key={row.key}
+                  message={row.message!}
+                  onOpenMedia={openMedia}
+                  onReply={openReply}
+                  onReact={react}
+                  seen={seenFor(row.message!)}
+                />
               ),
             )}
           </div>
         )}
       </div>
 
-      <Composer conversationId={conversationId} />
+      <Composer
+        conversationId={conversationId}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+      />
 
       <MediaViewer message={viewerMessage} onClose={() => setViewerMessage(null)} />
     </div>

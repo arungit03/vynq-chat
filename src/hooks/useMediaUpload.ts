@@ -12,6 +12,7 @@ import {
   MAX_CHAT_VIDEO_DURATION_S,
   chatMediaPath,
 } from '@/lib/constants'
+import type { ReplyRef } from '@/types'
 export type MediaStage = 'idle' | 'preview' | 'uploading' | 'error' | 'sending'
 
 export type MediaKind = 'image' | 'video'
@@ -30,9 +31,9 @@ export interface UseMediaUploadResult {
   pending: PendingMedia | null
   pick: (file: File) => string | null // returns an error message or null
   setCaption: (caption: string) => void
-  send: () => Promise<void>
+  send: () => Promise<boolean> // true when a message was written
   cancel: () => void
-  retry: () => void
+  retry: () => Promise<boolean>
   busy: boolean
 }
 
@@ -50,9 +51,13 @@ function validateMedia(file: File, kind: MediaKind): string | null {
 
 /**
  * Manages a single in-flight media attachment: validate → preview →
- * resumable upload (progress, cancel, retry) → message write.
+ * resumable upload (progress, cancel, retry) → message write. The optional
+ * `replyTo` is attached to the written message.
  */
-export function useMediaUpload(conversationId: string): UseMediaUploadResult {
+export function useMediaUpload(
+  conversationId: string,
+  replyTo: ReplyRef | null = null,
+): UseMediaUploadResult {
   const { user } = useAuth()
   const [pending, setPending] = useState<PendingMedia | null>(null)
   const uploadRef = useRef<StartedUpload | null>(null)
@@ -94,8 +99,8 @@ export function useMediaUpload(conversationId: string): UseMediaUploadResult {
   const cancel = useCallback(() => clear(), [clear])
 
   const beginUpload = useCallback(
-    async (target: PendingMedia) => {
-      if (!user) return
+    async (target: PendingMedia): Promise<boolean> => {
+      if (!user) return false
       // Generate the message id up-front so the storage path is stable.
       const messageId = crypto.randomUUID()
       const path = chatMediaPath(conversationId, messageId, target.file.name)
@@ -125,21 +130,23 @@ export function useMediaUpload(conversationId: string): UseMediaUploadResult {
           mediaHeight: meta.height,
           mediaDuration: meta.duration,
           caption: target.caption.trim() || undefined,
-        })
+        }, replyTo ?? undefined)
         clear()
+        return true
       } catch {
         setPending((prev) =>
           prev && prev.file === target.file
             ? { ...prev, stage: 'error', error: 'Upload failed — check your connection and retry.' }
             : prev,
         )
+        return false
       }
     },
-    [conversationId, user, clear],
+    [conversationId, user, clear, replyTo],
   )
 
-  const send = useCallback(async () => {
-    if (!pending || pending.stage === 'uploading' || pending.stage === 'sending') return
+  const send = useCallback(async (): Promise<boolean> => {
+    if (!pending || pending.stage === 'uploading' || pending.stage === 'sending') return false
 
     // Duration rule for videos: check before uploading.
     if (pending.kind === 'video' && pending.file.type.startsWith('video/')) {
@@ -148,16 +155,16 @@ export function useMediaUpload(conversationId: string): UseMediaUploadResult {
         setPending((prev) =>
           prev ? { ...prev, stage: 'error', error: `Videos must be under ${MAX_CHAT_VIDEO_DURATION_S}s.` } : prev,
         )
-        return
+        return false
       }
     }
 
-    await beginUpload(pending)
+    return beginUpload(pending)
   }, [pending, beginUpload])
 
-  const retry = useCallback(async () => {
-    if (!pending) return
-    await beginUpload(pending)
+  const retry = useCallback(async (): Promise<boolean> => {
+    if (!pending) return false
+    return beginUpload(pending)
   }, [pending, beginUpload])
 
   return {

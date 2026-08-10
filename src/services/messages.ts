@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore'
 import { getFirestoreDb } from '@/lib/firebase/client'
 import { MESSAGE_TTL_MS, MAX_REPLY_PREVIEW_LENGTH } from '@/lib/constants'
-import type { MessageType } from '@/types'
+import type { MessageType, ReplyRef } from '@/types'
 
 export interface SendTextResult {
   messageId: string
@@ -36,11 +36,12 @@ export async function sendTextMessage(
   conversationId: string,
   senderId: string,
   text: string,
+  replyTo?: ReplyRef,
 ): Promise<SendTextResult> {
   return writeMessage(
     conversationId,
     senderId,
-    { type: 'text', text },
+    replyTo ? { type: 'text', text, replyTo } : { type: 'text', text },
     truncate(text, MAX_REPLY_PREVIEW_LENGTH),
   )
 }
@@ -100,13 +101,19 @@ export async function sendMediaMessage(
   conversationId: string,
   senderId: string,
   data: MediaMessageData,
+  replyTo?: ReplyRef,
 ): Promise<SendTextResult> {
   const preview = data.caption?.trim()
     ? truncate(data.caption, MAX_REPLY_PREVIEW_LENGTH)
     : data.type === 'image'
       ? 'Photo'
       : 'Video'
-  return writeMessage(conversationId, senderId, { ...data }, preview)
+  return writeMessage(
+    conversationId,
+    senderId,
+    replyTo ? { ...data, replyTo } : { ...data },
+    preview,
+  )
 }
 
 /** Mark the conversation as read up to "now" for the given member. */

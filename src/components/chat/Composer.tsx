@@ -1,25 +1,29 @@
 'use client'
 
 import { useRef, useState, type FormEvent } from 'react'
-import { Image as ImageIcon, RotateCcw, SendHorizontal, Trash2 } from 'lucide-react'
+import { CornerUpLeft, Image as ImageIcon, RotateCcw, SendHorizontal, Trash2, X } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth-provider'
 import { sendTextMessage } from '@/services/messages'
 import { useMediaUpload } from '@/hooks/useMediaUpload'
+import { useTypingIndicator } from '@/hooks/useTypingIndicator'
 import { useToast } from '@/components/ui/Toast'
 import { mapAuthError } from '@/services/auth'
 import { MAX_MESSAGE_TEXT_LENGTH } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+import type { ReplyRef } from '@/types'
 
 export interface ComposerProps {
   conversationId: string
+  replyTo?: ReplyRef | null
+  onCancelReply?: () => void
 }
 
 /**
- * Chat composer: text send plus image/video attachments. The media flow
- * (validate → preview/caption → resumable upload with progress → write
- * message) lives in useMediaUpload; this renders its states.
+ * Chat composer: text send plus image/video attachments. Shows a "replying
+ * to…" bar when `replyTo` is set (both text and media messages carry it) and
+ * reports typing via the throttled typing indicator.
  */
-export function Composer({ conversationId }: ComposerProps) {
+export function Composer({ conversationId, replyTo = null, onCancelReply }: ComposerProps) {
   const { user } = useAuth()
   const toast = useToast()
   const [text, setText] = useState('')
@@ -27,7 +31,8 @@ export function Composer({ conversationId }: ComposerProps) {
   const textRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const media = useMediaUpload(conversationId)
+  const { notifyTyping } = useTypingIndicator(conversationId)
+  const media = useMediaUpload(conversationId, replyTo)
   const pending = media.pending
   const busy = media.busy || sending
 
@@ -37,14 +42,20 @@ export function Composer({ conversationId }: ComposerProps) {
     if (!trimmed || !user || busy) return
     setSending(true)
     try {
-      await sendTextMessage(conversationId, user.uid, trimmed)
+      await sendTextMessage(conversationId, user.uid, trimmed, replyTo ?? undefined)
       setText('')
+      if (replyTo) onCancelReply?.()
     } catch (err) {
       toast.error(mapAuthError(err))
     } finally {
       setSending(false)
       textRef.current?.focus()
     }
+  }
+
+  async function onSendMedia() {
+    const sent = await media.send()
+    if (sent && replyTo) onCancelReply?.()
   }
 
   function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -64,6 +75,26 @@ export function Composer({ conversationId }: ComposerProps) {
 
   return (
     <div className="border-t border-border-subtle bg-surface-elevated">
+      {/* Reply bar */}
+      {replyTo && (
+        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-raised px-3 py-2">
+          <CornerUpLeft size={15} className="shrink-0 text-brand" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold text-brand">
+              Replying to {replyTo.senderId === user?.uid ? 'yourself' : 'this message'}
+            </p>
+            <p className="truncate text-xs text-ink-muted">{replyTo.preview}</p>
+          </div>
+          <button
+            onClick={onCancelReply}
+            aria-label="Cancel reply"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       {/* Pending media preview */}
       {pending && (
         <div className="flex items-center gap-3 px-3 pt-2.5">
@@ -97,7 +128,7 @@ export function Composer({ conversationId }: ComposerProps) {
               value={pending.caption}
               onChange={(e) => media.setCaption(e.target.value)}
               disabled={pending.stage === 'uploading' || pending.stage === 'sending'}
-              placeholder={pending.kind === 'video' ? 'Add a caption…' : 'Add a caption…'}
+              placeholder="Add a caption…"
               aria-label="Caption"
               maxLength={MAX_MESSAGE_TEXT_LENGTH}
               className="h-10 w-full rounded-xl border border-border-subtle bg-surface px-3 text-sm text-ink placeholder:text-ink-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
@@ -113,7 +144,7 @@ export function Composer({ conversationId }: ComposerProps) {
           <div className="flex shrink-0 items-center gap-1.5">
             {pending.stage === 'error' ? (
               <button
-                onClick={media.retry}
+                onClick={() => void media.retry()}
                 aria-label="Retry upload"
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-white transition-colors hover:bg-brand-strong"
               >
@@ -121,7 +152,7 @@ export function Composer({ conversationId }: ComposerProps) {
               </button>
             ) : pending.stage === 'preview' ? (
               <button
-                onClick={media.send}
+                onClick={() => void onSendMedia()}
                 disabled={busy}
                 aria-label="Send attachment"
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-white transition-colors hover:bg-brand-strong disabled:opacity-40"
@@ -157,6 +188,7 @@ export function Composer({ conversationId }: ComposerProps) {
           value={text}
           onChange={(e) => {
             setText(e.target.value)
+            notifyTyping()
             autoGrow()
           }}
           onKeyDown={(e) => {
