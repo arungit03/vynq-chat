@@ -17,6 +17,7 @@ import { formatDayLabel, toMillis } from '@/lib/dates'
 import { MessageBubble, replyPreviewFor } from '@/components/chat/MessageBubble'
 import { MediaViewer } from '@/components/chat/MediaViewer'
 import { Composer } from '@/components/chat/Composer'
+import { ChatInfoModal } from '@/components/chat/ChatInfoModal'
 import type { Message, ReplyRef } from '@/types'
 
 function dateSeparators(messages: Message[]): Array<{ key: string; kind: 'date' | 'message'; message?: Message; label?: string }> {
@@ -43,7 +44,7 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   const toast = useToast()
   const { user } = useAuth()
   const myUid = user?.uid ?? ''
-  const { conversation } = useConversation(conversationId)
+  const { conversation, ready: conversationReady } = useConversation(conversationId)
   const { messages, loading, loadingOlder, hasMore, loadOlder } = useMessages(conversationId)
   const otherUid = conversation?.members.find((m) => m !== myUid) ?? ''
   const { profile } = usePublicProfile(otherUid)
@@ -52,6 +53,13 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   const stickRef = useRef(true)
   const [viewerMessage, setViewerMessage] = useState<Message | null>(null)
   const [replyTo, setReplyTo] = useState<ReplyRef | null>(null)
+  const [infoOpen, setInfoOpen] = useState(false)
+
+  // Leave when the conversation disappears (e.g. the peer blocked us, or the
+  // chat was removed) — the other party no longer grants read access.
+  useEffect(() => {
+    if (conversationReady && !conversation) router.replace('/home')
+  }, [conversationReady, conversation, router])
 
   const openMedia = useCallback((m: Message) => setViewerMessage(m), [])
 
@@ -89,14 +97,15 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   }, [conversationId, myUid])
 
   // Sent/seen: an outgoing message is "seen" once the peer's lastRead passes
-  // its createdAt. Read-receipt preferences are enforced in P11 (settings).
+  // its createdAt — but only if the peer reveals read receipts (public flag).
   const peerLastRead = conversation?.lastRead?.[otherUid]
+  const showReceipts = profile?.readReceipts !== false
   const seenFor = useCallback(
     (m: Message): boolean => {
-      if (m.senderId !== myUid || !peerLastRead) return false
+      if (m.senderId !== myUid || !peerLastRead || !showReceipts) return false
       return toMillis(peerLastRead) >= toMillis(m.createdAt)
     },
-    [myUid, peerLastRead],
+    [myUid, peerLastRead, showReceipts],
   )
 
   const rows = dateSeparators(messages)
@@ -132,6 +141,7 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
         </div>
         <button
           aria-label="Conversation info"
+          onClick={() => setInfoOpen(true)}
           className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink"
         >
           <Info size={20} />
@@ -201,6 +211,15 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
       />
 
       <MediaViewer message={viewerMessage} onClose={() => setViewerMessage(null)} />
+
+      <ChatInfoModal
+        open={infoOpen}
+        onClose={() => setInfoOpen(false)}
+        peerUid={otherUid}
+        peerName={profile?.displayName ?? profile?.username ?? 'Unknown'}
+        peerUsername={profile?.username ?? 'user'}
+        peerAvatarURL={profile?.avatarURL ?? null}
+      />
     </div>
   )
 }

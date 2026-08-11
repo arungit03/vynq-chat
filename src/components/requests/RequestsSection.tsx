@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Inbox, UserPlus } from 'lucide-react'
+import { Ban, Check, Inbox, UserPlus } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Button } from '@/components/ui/Button'
@@ -10,6 +10,7 @@ import { usePendingRequests } from '@/hooks/usePendingRequests'
 import { usePublicProfile } from '@/hooks/usePublicProfile'
 import { useAuth } from '@/features/auth/auth-provider'
 import { acceptFriendRequest, cancelFriendRequest, rejectFriendRequest } from '@/services/connections'
+import { BlockConfirmDialog } from '@/components/block/BlockConfirmDialog'
 import { useToast } from '@/components/ui/Toast'
 import { mapFunctionError } from '@/lib/callable'
 import type { FriendRequest } from '@/types'
@@ -24,6 +25,7 @@ function RequestRow({ request }: { request: FriendRequest }) {
   const otherUid = incoming ? request.senderId : request.receiverId
   const { profile } = usePublicProfile(otherUid)
   const [busy, setBusy] = useState<'accept' | 'reject' | 'cancel' | null>(null)
+  const [confirmingBlock, setConfirmingBlock] = useState(false)
 
   async function run(action: 'accept' | 'reject' | 'cancel') {
     setBusy(action)
@@ -46,42 +48,62 @@ function RequestRow({ request }: { request: FriendRequest }) {
     }
   }
 
+  const displayName = profile?.displayName ?? profile?.username ?? 'Unknown'
+
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <Avatar
-        src={profile?.avatarURL ?? null}
-        name={profile?.displayName ?? profile?.username}
-        size={44}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-ink">
-          {profile?.displayName ?? profile?.username ?? '…'}
-        </p>
-        <p className="truncate text-xs text-ink-muted">
-          {incoming ? 'Wants to connect with you' : `Requested · @${profile?.username ?? '…'}`}
-        </p>
+    <>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <Avatar
+          src={profile?.avatarURL ?? null}
+          name={displayName}
+          size={44}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-ink">
+            {profile?.displayName ?? profile?.username ?? '…'}
+          </p>
+          <p className="truncate text-xs text-ink-muted">
+            {incoming ? 'Wants to connect with you' : `Requested · @${profile?.username ?? '…'}`}
+          </p>
+        </div>
+
+        {incoming ? (
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              onClick={() => run('accept')}
+              loading={busy === 'accept'}
+              leftIcon={busy !== 'accept' ? <Check size={14} /> : undefined}
+            >
+              Accept
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => run('reject')} loading={busy === 'reject'}>
+              Decline
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setConfirmingBlock(true)}
+              aria-label={`Block ${displayName}`}
+              className="text-ink-muted hover:text-danger"
+            >
+              <Ban size={15} />
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => run('cancel')} loading={busy === 'cancel'}>
+            Cancel
+          </Button>
+        )}
       </div>
 
-      {incoming ? (
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => run('accept')}
-            loading={busy === 'accept'}
-            leftIcon={busy !== 'accept' ? <Check size={14} /> : undefined}
-          >
-            Accept
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => run('reject')} loading={busy === 'reject'}>
-            Decline
-          </Button>
-        </div>
-      ) : (
-        <Button size="sm" variant="ghost" onClick={() => run('cancel')} loading={busy === 'cancel'}>
-          Cancel
-        </Button>
-      )}
-    </div>
+      <BlockConfirmDialog
+        open={confirmingBlock}
+        onClose={() => setConfirmingBlock(false)}
+        targetUid={otherUid}
+        targetName={profile?.username ?? 'user'}
+      />
+    </>
   )
 }
 

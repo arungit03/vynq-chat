@@ -107,6 +107,19 @@ export const acceptFriendRequest = functions.https.onCall(
       if (data.status !== 'pending') fail('failed-precondition', 'Request is no longer pending')
 
       const senderId = data.senderId as string
+
+      // A block may have happened since the request was sent — refuse to
+      // connect if either side has blocked the other.
+      const blockRef = db.doc(`blocks/${uid}_${senderId}`)
+      const reverseBlockRef = db.doc(`blocks/${senderId}_${uid}`)
+      const [blocked, reverseBlocked] = await Promise.all([
+        tx.get(blockRef),
+        tx.get(reverseBlockRef),
+      ])
+      if (blocked.exists || reverseBlocked.exists) {
+        fail('permission-denied', 'You cannot connect with this user')
+      }
+
       const key = pairKey(uid, senderId)
       const friendshipRef = db.doc(`friendships/${key}`)
       const conversationRef = db.doc(`conversations/${key}`)

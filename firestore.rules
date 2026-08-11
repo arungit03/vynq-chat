@@ -126,7 +126,7 @@ service cloud.firestore {
         request.resource.data.normalizedUsername is string;
       allow update: if verified() && request.auth.uid == uid &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['displayName', 'bio', 'avatarPath', 'avatarURL']);
+          .hasOnly(['displayName', 'bio', 'avatarPath', 'avatarURL', 'readReceipts']);
       allow delete: if verified() && request.auth.uid == uid;
     }
 

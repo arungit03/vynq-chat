@@ -30,6 +30,15 @@ async function notificationsEnabled(uid: string, kind: 'messages' | 'requests'):
   return flags?.[kind] !== false
 }
 
+/** True if either user has blocked the other (blocks are symmetric). */
+async function blockedBetween(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([
+    db.doc(`blocks/${a}_${b}`).get(),
+    db.doc(`blocks/${b}_${a}`).get(),
+  ])
+  return x.exists || y.exists
+}
+
 /** Fan a generic push out to all of the recipient's devices. */
 async function sendPush(recipientUid: string, payload: PushPayload): Promise<void> {
   const tokensSnap = await db.collection(`fcmTokens/${recipientUid}/tokens`).get()
@@ -80,6 +89,7 @@ export const notifyFriendRequest = functions.firestore.onDocumentCreated(
     const receiverId = data.receiverId as string
     if (typeof senderId !== 'string' || typeof receiverId !== 'string') return
     if (!(await notificationsEnabled(receiverId, 'requests'))) return
+    if (await blockedBetween(senderId, receiverId)) return
 
     const username = await readUsername(senderId)
     await sendPush(receiverId, {
@@ -132,6 +142,7 @@ export const notifyMessageCreated = functions.firestore.onDocumentCreated(
     const recipient = members.find((m) => m !== senderId)
     if (!recipient) return
     if (!(await notificationsEnabled(recipient, 'messages'))) return
+    if (await blockedBetween(senderId, recipient)) return
 
     const username = await readUsername(senderId)
     await sendPush(recipient, {

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Calendar, Pencil, Shield } from 'lucide-react'
+import Link from 'next/link'
+import { Calendar, ChevronRight, Pencil, Shield } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
 import { PageLoader } from '@/components/ui/Spinner'
@@ -56,17 +57,16 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Divider + privacy/security shortcuts */}
+          {/* Divider + privacy/security shortcut */}
           <div className="my-8 h-px bg-border-subtle" />
-          <div className="space-y-2">
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-surface-raised"
-            >
-              <Shield size={18} className="text-ink-muted" aria-hidden />
-              Privacy & security
-            </button>
-          </div>
+          <Link
+            href="/settings"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-surface-raised"
+          >
+            <Shield size={18} className="text-ink-muted" aria-hidden />
+            Privacy & security
+            <ChevronRight size={16} className="ml-auto text-ink-muted" aria-hidden />
+          </Link>
           <p className="mt-6 text-center text-xs text-ink-muted">
             Chats disappear after 7 days · Status after 24 hours
           </p>

@@ -31,6 +31,8 @@ export interface PublicProfile {
   avatarPath?: string
   avatarURL?: string
   bio?: string
+  /** Whether the user reveals read receipts. Public so peers can gate the seen badge. */
+  readReceipts?: boolean
   createdAt: DocTs
 }
 

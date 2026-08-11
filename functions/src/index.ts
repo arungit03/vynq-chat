@@ -25,6 +25,9 @@ export {
   rejectFriendRequest,
 } from './connections'
 
+// ── Blocks ───────────────────────────────────────────────────
+export { blockUser, unblockUser } from './blocks'
+
 // ── Expiry / cleanup ─────────────────────────────────────────
 export { cleanupExpiredContent } from './cleanup'
 
