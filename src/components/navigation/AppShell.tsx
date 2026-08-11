@@ -8,6 +8,9 @@ import { useAuth } from '@/features/auth/auth-provider'
 import { Avatar } from '@/components/ui/Avatar'
 import { LogoMark } from '@/components/ui/Logo'
 import { PageLoader } from '@/components/ui/Spinner'
+import { NotificationsOptIn } from '@/components/notifications/NotificationsOptIn'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
+import { useLocalStorageBoolean } from '@/hooks/useLocalStorageBoolean'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
@@ -29,6 +32,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
 
   const inChat = pathname.startsWith('/chat')
+
+  // Push notifications: opt-in state persisted, prompt after user action.
+  const [notificationsOn, setNotificationsOn] = useLocalStorageBoolean('notifications')
+  const [notifDismissed, setNotifDismissed] = useLocalStorageBoolean('notifications-dismissed')
+  const { status: pushStatus, supported: pushSupported, enable: enablePush } = usePushNotifications(
+    notificationsOn,
+  )
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/login')
@@ -97,6 +107,18 @@ export function AppShell({ children }: { children: ReactNode }) {
             A3<span className="text-brand">Chat</span>
           </span>
         </header>
+
+        {pushSupported && !notifDismissed && !notificationsOn && !inChat && (
+          <NotificationsOptIn
+            status={pushStatus}
+            onEnable={() => {
+              void enablePush().then((s) => {
+                if (s === 'granted') setNotificationsOn(true)
+              })
+            }}
+            onDismiss={() => setNotifDismissed(true)}
+          />
+        )}
 
         <main className="min-h-0 flex-1">{children}</main>
 

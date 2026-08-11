@@ -27,3 +27,6 @@ export {
 
 // ── Expiry / cleanup ─────────────────────────────────────────
 export { cleanupExpiredContent } from './cleanup'
+
+// ── Notifications (FCM) ──────────────────────────────────────
+export { notifyFriendRequest, notifyFriendshipAccepted, notifyMessageCreated } from './notifications'

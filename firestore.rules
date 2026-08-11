@@ -112,6 +112,11 @@ service cloud.firestore {
       allow read, write: if verified() && request.auth.uid == uid;
     }
 
+    // ── fcmTokens: device push tokens (owner writes, functions read) ──
+    match /fcmTokens/{uid}/tokens/{token} {
+      allow read, write: if verified() && request.auth.uid == uid;
+    }
+
     // ── publicProfiles: searchable social info ────────────────
     match /publicProfiles/{uid} {
       allow read: if signedIn();

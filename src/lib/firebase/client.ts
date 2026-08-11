@@ -82,6 +82,10 @@ function ensureApp(): FirebaseApp {
   return app
 }
 
+export function getFirebaseApp(): FirebaseApp {
+  return ensureApp()
+}
+
 export function getFirebaseAuth(): Auth {
   if (auth) return auth
   const current = getAuth(ensureApp())

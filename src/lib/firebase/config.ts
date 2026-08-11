@@ -54,6 +54,9 @@ export const isEmulator =
 /** Optional App Check reCAPTCHA v3 site key (production). */
 export const appCheckRecaptchaKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_RECAPTCHA_KEY
 
+/** Optional FCM web push VAPID key (production push notifications). */
+export const messagingVapidKey = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_VAPID_KEY
+
 /** Optional App Check debug token (development / emulator). */
 export const appCheckDebugToken = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN
 
