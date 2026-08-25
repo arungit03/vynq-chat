@@ -70,13 +70,11 @@ export async function resendVerificationEmail(user: User) {
  * success. Throws on invalid or expired codes (surfaced via getAuthErrorMessage).
  */
 export async function applyEmailVerificationCode(code: string): Promise<string | null> {
+  // Read the target email before consuming the one-time code. Once the code
+  // is applied, checkActionCode correctly reports it as already used.
+  const info = await checkActionCode(auth, code);
   await applyActionCode(auth, code);
-  try {
-    const info = await checkActionCode(auth, code);
-    return info.data.email ?? null;
-  } catch {
-    return null;
-  }
+  return info.data.email ?? null;
 }
 
 /** True when the supplied query string carries a Firebase email-action code. */
@@ -98,12 +96,20 @@ export function getAuthErrorMessage(error: unknown) {
     "auth/user-not-found": "The email or password is incorrect.",
     "auth/wrong-password": "The email or password is incorrect.",
     "auth/weak-password": "Use a stronger password with at least 6 characters.",
+    "auth/network-request-failed": "Firebase could not reach the authentication service. Check your connection and try again.",
+    "auth/operation-not-allowed": "Email/password sign-in is not enabled in Firebase Authentication.",
+    "auth/invalid-api-key": "Firebase configuration is invalid. Check the web app environment variables.",
+    "auth/app-not-authorized": "This app domain is not authorized in Firebase Authentication.",
+    "auth/internal-error": "Firebase Authentication had an internal error. Please try again.",
     "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
     "functions/already-exists": "That username is already taken.",
     "functions/invalid-argument": "Check your username and try again.",
     "functions/not-found": "The username service is not deployed yet. Start the emulator or deploy Functions.",
     "functions/unavailable": "The username service is temporarily unavailable.",
     "functions/unauthenticated": "Your session expired. Please try again.",
+    "functions/permission-denied": "This account is not allowed to complete that action yet.",
+    "functions/failed-precondition": "This action cannot be completed with the account state currently available.",
+    "functions/internal": "The Vynq backend returned an internal error. Please try again.",
     "functions/resource-exhausted": "Too many attempts. Please wait before trying again.",
     "auth/invalid-action-code": "This verification link is invalid or already used.",
     "auth/expired-action-code": "This verification link has expired. Request a new one.",

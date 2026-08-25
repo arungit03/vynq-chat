@@ -10,6 +10,7 @@ type AuthContextValue = {
   user: User | null;
   status: AuthStatus;
   ready: boolean;
+  authError: Error | null;
   refreshUser: () => Promise<User | null>;
   signOutUser: () => Promise<void>;
 };
@@ -19,12 +20,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const [authError, setAuthError] = useState<Error | null>(null);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      setReady(true);
-    });
+    return onAuthStateChanged(
+      auth,
+      (nextUser) => {
+        setAuthError(null);
+        setUser(nextUser);
+        setReady(true);
+      },
+      (error) => {
+        // Always resolve the provider when Firebase cannot restore the
+        // session. Leaving ready=false makes every auth screen spin forever.
+        setAuthError(error);
+        setUser(null);
+        setReady(true);
+      },
+    );
   }, []);
 
   const status: AuthStatus = !ready
@@ -39,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     status,
     ready,
+    authError,
     refreshUser: async () => {
       if (!auth.currentUser) {
         setUser(null);
@@ -52,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await signOut(auth);
       setUser(null);
     },
-  }), [ready, status, user]);
+  }), [authError, ready, status, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
