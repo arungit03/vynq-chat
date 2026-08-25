@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vynq-chat
 
-## Getting Started
+Vynq-chat is a light-blue, privacy-first WhatsApp-style PWA with Instagram-style friendship, messaging, media, and status interactions. Messages and media are short-lived and backend cleanup removes expired Firestore records and Storage objects.
 
-First, run the development server:
+## Stack
+
+- Next.js, React, TypeScript, Tailwind CSS
+- Firebase Authentication, Firestore, Realtime Database, Storage, Cloud Functions, Analytics
+- Firebase App Hosting for production Next.js deployment
+
+## Local setup
 
 ```bash
+npm install
+npm --prefix functions install
+Copy-Item .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Fill `.env.local` with the Firebase web configuration for your project. Never commit `.env.local` or Admin credentials.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Quality gate
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run verify
+```
 
-## Learn More
+This runs privacy/PWA configuration checks, linting, the Next.js production build, and the Functions type-check/build.
 
-To learn more about Next.js, take a look at the following resources:
+## Production
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [production deployment and maintenance](docs/production-deployment.md) for Firebase deployment, App Hosting, monitoring, custom domain, and handoff steps.

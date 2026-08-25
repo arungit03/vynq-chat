@@ -1,0 +1,48 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "presence": {
+      "$uid": {
+        ".read": "auth != null && auth.token.email_verified == true && (auth.uid === $uid || root.child('presenceAudience').child($uid).child(auth.uid).val() === true)",
+        ".write": "auth != null && auth.token.email_verified == true && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['state', 'lastChanged'])",
+        "state": {
+          ".validate": "newData.isString() && (newData.val() == 'online' || newData.val() == 'offline')"
+        },
+        "lastChanged": {
+          ".validate": "newData.isNumber() && newData.val() === now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "typing": {
+      "$conversationId": {
+        ".read": "auth != null && auth.token.email_verified == true && root.child('conversationMembers').child($conversationId).child(auth.uid).val() === true",
+        "$uid": {
+          ".write": "auth != null && auth.token.email_verified == true && auth.uid === $uid && root.child('conversationMembers').child($conversationId).child(auth.uid).val() === true",
+          ".validate": "!newData.exists() || newData.hasChildren(['isTyping', 'updatedAt'])",
+          "isTyping": {
+            ".validate": "newData.isBoolean()"
+          },
+          "updatedAt": {
+            ".validate": "newData.isNumber() && newData.val() === now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "conversationMembers": {
+      ".read": false,
+      ".write": false
+    },
+    "presenceAudience": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

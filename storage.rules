@@ -1,83 +1,115 @@
-// =====================================================================
-// A3Chat — Cloud Storage Security Rules
-//
-// Every upload is constrained by authentication, ownership/membership,
-// a strict MIME whitelist and a maximum size. Never public-writable.
-// =====================================================================
-
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
-
-    function signedIn() {
-      return request.auth != null;
-    }
-
     function verified() {
-      return signedIn() && request.auth.token.email_verified == true;
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
-    function isImage() {
-      return request.resource.contentType in [
-        'image/jpeg', 'image/png', 'image/webp', 'image/gif'
-      ];
+    function pairId(uidA, uidB) {
+      return uidA < uidB ? uidA + '_' + uidB : uidB + '_' + uidA;
     }
 
-    function isVideo() {
-      return request.resource.contentType in [
-        'video/mp4', 'video/webm', 'video/quicktime'
-      ];
+    function friendsWith(uid) {
+      return verified()
+        && firestore.exists(/databases/(default)/documents/friendships/$(pairId(request.auth.uid, uid)))
+        && firestore.get(/databases/(default)/documents/friendships/$(pairId(request.auth.uid, uid))).data.status == 'active'
+        && request.auth.uid in firestore.get(/databases/(default)/documents/friendships/$(pairId(request.auth.uid, uid))).data.memberUids;
     }
 
-    // ── Avatars ────────────────────────────────────────────────
-    // Public within the app (mirrors publicProfiles): any signed-in user
-    // may view avatars; only the owner uploads/replaces/deletes their own.
-    match /avatars/{uid}/{filename} {
-      allow read: if signedIn();
-      allow write: if verified() &&
-        request.auth.uid == uid &&
-        isImage() &&
-        request.resource.size < 5 * 1024 * 1024;
+    function conversationMember(conversationId) {
+      return verified()
+        && firestore.exists(/databases/(default)/documents/conversations/$(conversationId))
+        && request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.memberUids
+        && firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.status == 'active';
     }
 
-    // ── Chat media ─────────────────────────────────────────────
-    // Path: chatMedia/{conversationId}/{messageId}/{filename}
-    match /chatMedia/{conversationId}/{messageId}/{filename} {
-      function isMember() {
-        return request.auth.uid in firestore
-          .get(/databases/(default)/documents/conversations/$(conversationId))
-          .data.members;
-      }
+    function uploadTicket(conversationId, messageId) {
+      return firestore.exists(/databases/(default)/documents/mediaUploads/$(messageId))
+        && firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.conversationId == conversationId
+        && firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.senderUid == request.auth.uid
+        && firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.storagePath == 'conversations/' + conversationId + '/messages/' + messageId + '/media'
+        && firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.uploadExpiresAt > request.time;
+    }
 
-      allow read: if signedIn() && isMember();
-      allow write: if verified() &&
-        isMember() &&
-        (
-          (isImage() && request.resource.size < 10 * 1024 * 1024) ||
-          (isVideo() && request.resource.size < 60 * 1024 * 1024)
+    function validTicketedMedia(conversationId, messageId) {
+      return uploadTicket(conversationId, messageId)
+        && request.resource.size == firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.bytes
+        && request.resource.contentType == firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.contentType
+        && request.resource.cacheControl == 'private, max-age=0, no-store'
+        && (
+          (
+            firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.type == 'image'
+            && request.resource.size <= 5 * 1024 * 1024
+            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp']
+          )
+          || (
+            firestore.get(/databases/(default)/documents/mediaUploads/$(messageId)).data.type == 'video'
+            && request.resource.size <= 50 * 1024 * 1024
+            && request.resource.contentType in ['video/mp4', 'video/webm']
+          )
         );
     }
 
-    // ── Status media ───────────────────────────────────────────
-    // Path: statusMedia/{userId}/{statusId}/{filename}
-    match /statusMedia/{userId}/{statusId}/{filename} {
-      function isFriend(a, b) {
-        return firestore.exists(/databases/(default)/documents/friendships/$(a + '_' + b)) ||
-               firestore.exists(/databases/(default)/documents/friendships/$(b + '_' + a));
-      }
+    function statusUploadTicket(statusId) {
+      return firestore.exists(/databases/(default)/documents/statusUploads/$(statusId))
+        && firestore.get(/databases/(default)/documents/statusUploads/$(statusId)).data.ownerUid == request.auth.uid
+        && firestore.get(/databases/(default)/documents/statusUploads/$(statusId)).data.storagePath == 'statuses/' + statusId + '/media'
+        && firestore.get(/databases/(default)/documents/statusUploads/$(statusId)).data.uploadExpiresAt > request.time;
+    }
 
-      function canAccessStatus() {
-        return request.auth.uid == userId ||
-               (signedIn() && isFriend(request.auth.uid, userId));
-      }
-
-      allow read: if canAccessStatus();
-      allow write: if verified() &&
-        request.auth.uid == userId &&
-        (
-          (isImage() && request.resource.size < 10 * 1024 * 1024) ||
-          (isVideo() && request.resource.size < 60 * 1024 * 1024)
+    function validStatusTicketedMedia(statusId) {
+      return statusUploadTicket(statusId)
+        && request.resource.size == firestore.get(/databases/(default)/documents/statusUploads/$(statusId)).data.bytes
+        && request.resource.contentType == firestore.get(/databases/(default)/documents/statusUploads/$(statusId)).data.contentType
+        && request.resource.cacheControl == 'private, max-age=0, no-store'
+        && (
+          (
+            firestore.get(/databases/(default)/documents/statusUploads/$(statusId)).data.type == 'image'
+            && request.resource.size <= 5 * 1024 * 1024
+            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp']
+          )
+          || (
+            firestore.get(/databases/(default)/documents/statusUploads/$(statusId)).data.type == 'video'
+            && request.resource.size <= 50 * 1024 * 1024
+            && request.resource.contentType in ['video/mp4', 'video/webm']
+          )
         );
+    }
+
+    match /users/{uid}/avatar/{assetId} {
+      allow read: if verified();
+      allow write: if verified()
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /conversations/{conversationId}/messages/{messageId}/{assetId} {
+      allow read: if conversationMember(conversationId)
+        && firestore.exists(/databases/(default)/documents/conversations/$(conversationId)/messages/$(messageId))
+        && firestore.get(/databases/(default)/documents/conversations/$(conversationId)/messages/$(messageId)).data.expiresAt > request.time
+        && firestore.get(/databases/(default)/documents/conversations/$(conversationId)/messages/$(messageId)).data.storagePath == 'conversations/' + conversationId + '/messages/' + messageId + '/media';
+      allow create: if verified()
+        && conversationMember(conversationId)
+        && assetId == 'media'
+        && validTicketedMedia(conversationId, messageId);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /statuses/{statusId}/{assetId} {
+      allow read: if verified()
+        && firestore.exists(/databases/(default)/documents/statuses/$(statusId))
+        && firestore.get(/databases/(default)/documents/statuses/$(statusId)).data.expiresAt > request.time
+        && (
+          firestore.get(/databases/(default)/documents/statuses/$(statusId)).data.ownerUid == request.auth.uid
+          || friendsWith(firestore.get(/databases/(default)/documents/statuses/$(statusId)).data.ownerUid)
+        );
+      allow create: if verified()
+        && assetId == 'media'
+        && validStatusTicketedMedia(statusId);
+      allow update, delete: if false;
     }
   }
 }
