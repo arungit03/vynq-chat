@@ -3,8 +3,11 @@ import {
   checkActionCode,
   createUserWithEmailAndPassword,
   deleteUser,
+  getAdditionalUserInfo,
+  GoogleAuthProvider,
   sendEmailVerification,
   sendPasswordResetEmail,
+  signInWithPopup,
   signInWithEmailAndPassword,
   type ActionCodeSettings,
   type User,
@@ -41,19 +44,55 @@ export function validateUsername(value: string) {
 
 type ClaimUsernameResponse = { username: string };
 
+type GoogleAuthResult = {
+  user: User;
+  needsUsername: boolean;
+};
+
+function usernameSuggestion(value: string | null | undefined) {
+  const suggestion = normalizeUsername((value ?? "").replace(/[^a-zA-Z0-9._]/g, ""));
+  return suggestion.length >= 3 ? suggestion.slice(0, 24) : "vynquser";
+}
+
+export function suggestedUsernameForUser(user: Pick<User, "displayName" | "email" | "uid">) {
+  return usernameSuggestion(user.displayName) || usernameSuggestion(user.email?.split("@")[0]) || `vynq${user.uid.slice(0, 8).toLowerCase()}`;
+}
+
+async function claimUsername(username: string, displayName: string) {
+  const callable = httpsCallable<{ username: string; displayName: string }, ClaimUsernameResponse>(functions, "claimUsername");
+  return callable({ username, displayName });
+}
+
 export async function registerWithUsername({ username, email, password }: { username: string; email: string; password: string }) {
   const normalizedUsername = normalizeUsername(username);
   const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
   try {
-    const claimUsername = httpsCallable<{ username: string; displayName: string }, ClaimUsernameResponse>(functions, "claimUsername");
-    await claimUsername({ username: normalizedUsername, displayName: normalizedUsername });
+    await claimUsername(normalizedUsername, normalizedUsername);
     await sendEmailVerification(credential.user, verificationActionSettings());
     return credential.user;
   } catch (error) {
     await deleteUser(credential.user).catch(() => undefined);
     throw error;
   }
+}
+
+export async function signInWithGoogle(): Promise<GoogleAuthResult> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  const result = await signInWithPopup(auth, provider);
+  const additionalInfo = getAdditionalUserInfo(result);
+
+  // A Google account is already email-verified. The profile is still created
+  // by the server after the user chooses a unique Vynq username.
+  return {
+    user: result.user,
+    needsUsername: additionalInfo?.isNewUser === true,
+  };
+}
+
+export async function claimUsernameForCurrentUser(username: string, displayName: string) {
+  return claimUsername(normalizeUsername(username), displayName.trim() || normalizeUsername(username));
 }
 
 export async function loginWithEmail(email: string, password: string) {
@@ -101,6 +140,10 @@ export function getAuthErrorMessage(error: unknown) {
     "auth/invalid-api-key": "Firebase configuration is invalid. Check the web app environment variables.",
     "auth/app-not-authorized": "This app domain is not authorized in Firebase Authentication.",
     "auth/internal-error": "Firebase Authentication had an internal error. Please try again.",
+    "auth/popup-closed-by-user": "Google sign-in was canceled before it finished.",
+    "auth/popup-blocked": "Your browser blocked the Google sign-in popup. Allow popups and try again.",
+    "auth/cancelled-popup-request": "Another Google sign-in window is already open.",
+    "auth/account-exists-with-different-credential": "An account already uses this email with another sign-in method. Sign in with that method first.",
     "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
     "functions/already-exists": "That username is already taken.",
     "functions/invalid-argument": "Check your username and try again.",

@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import AuthField from "@/components/auth/auth-field";
 import AuthShell from "@/components/auth/auth-shell";
 import PasswordInput from "@/components/auth/password-input";
-import { getAuthErrorMessage, loginWithEmail, sendPasswordReset } from "@/lib/auth/auth-actions";
+import GoogleIcon from "@/components/auth/google-icon";
+import { getAuthErrorMessage, loginWithEmail, sendPasswordReset, signInWithGoogle } from "@/lib/auth/auth-actions";
 import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function LoginPage() {
@@ -18,12 +19,13 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || googleLoading) return;
     if (status === "authenticated") router.replace("/home");
     if (status === "unverified") router.replace("/verify-email");
-  }, [ready, router, status]);
+  }, [googleLoading, ready, router, status]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -55,6 +57,19 @@ export default function LoginPage() {
     }
   };
 
+  const continueWithGoogle = async () => {
+    setGoogleLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await signInWithGoogle();
+      router.replace(result.needsUsername ? "/complete-profile" : "/home");
+    } catch (googleError) {
+      setGoogleLoading(false);
+      setError(getAuthErrorMessage(googleError));
+    }
+  };
+
   return (
     <AuthShell eyebrow="Welcome back" title="Back to your people." description="Sign in to return to conversations that are meant to stay simple and short-lived." alternate={<span>New to Vynq? <Link href="/register" className="font-bold text-brand-strong hover:underline">Create account</Link></span>}>
       <form onSubmit={submit} className="space-y-4">
@@ -64,6 +79,8 @@ export default function LoginPage() {
         {notice ? <p role="status" className="rounded-2xl border border-success/25 bg-success-soft px-3.5 py-3 text-[11px] font-semibold leading-4 text-success">{notice}</p> : null}
         <button disabled={loading} type="submit" className="group flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-brand text-[12px] font-bold text-white shadow-[0_12px_24px_rgba(92,141,246,0.24)] transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Opening your space…" : "Sign in"}<ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" /></button>
       </form>
+      <div className="my-5 flex items-center gap-3 text-[10px] font-semibold text-ink-faint"><span className="h-px flex-1 bg-line" /> or continue with <span className="h-px flex-1 bg-line" /></div>
+      <button disabled={loading || googleLoading} type="button" onClick={() => void continueWithGoogle()} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-line bg-white text-[12px] font-bold text-ink-soft transition hover:border-brand/25 hover:bg-brand-pale hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-60"><GoogleIcon /> {googleLoading ? "Connecting Google..." : "Continue with Google"}</button>
       <div className="mt-7 flex items-center gap-3 text-[10px] font-semibold text-ink-faint"><span className="h-px flex-1 bg-line" /> verified email required <span className="h-px flex-1 bg-line" /></div>
     </AuthShell>
   );
