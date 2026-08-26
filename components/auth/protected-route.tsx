@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/routing";
 import AuthLoadingScreen from "@/components/auth/auth-loading-screen";
 import { useAuth } from "@/lib/auth/auth-provider";
 

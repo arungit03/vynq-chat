@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Expand, ImageOff, LoaderCircle, Play, X } from "lucide-react";
-import { getBlob, ref } from "firebase/storage";
-import { storage } from "@/lib/firebase/client";
+import { privateMediaBucket, supabase } from "@/lib/supabase/client";
 import { formatMediaSize } from "@/lib/chat/media";
 import type { ChatMessage } from "@/lib/chat/types";
 import { useModalFocus } from "@/lib/ui/use-modal-focus";
@@ -14,7 +13,6 @@ function MediaFrame({ message, src, expanded }: { message: ChatMessage; src: str
   }
   return <>
     {/* Object URLs come from authenticated Storage blobs, not a public image URL. */}
-    {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src={src} alt="Shared image" className={expanded ? "max-h-[78svh] max-w-full rounded-2xl object-contain" : "h-auto max-h-80 w-full rounded-[15px] object-cover"} />
   </>;
 }
@@ -29,8 +27,10 @@ export default function SecureChatMedia({ message }: { message: ChatMessage }) {
     if (!message.storagePath) return undefined;
     let active = true;
     let currentUrl: string | null = null;
-    void getBlob(ref(storage, message.storagePath))
-      .then((blob) => {
+    void supabase.storage.from(privateMediaBucket).download(message.storagePath)
+      .then(({ data, error }) => {
+        if (error || !data) throw error ?? new Error("Media unavailable");
+        const blob = data;
         currentUrl = URL.createObjectURL(blob);
         if (active) setObjectUrl(currentUrl);
         else URL.revokeObjectURL(currentUrl);

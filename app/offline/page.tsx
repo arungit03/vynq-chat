@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/lib/routing";
 import { ArrowLeft, LockKeyhole, WifiOff } from "lucide-react";
 
 export default function OfflinePage() {

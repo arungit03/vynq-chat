@@ -167,7 +167,7 @@ export default function RealtimeChatPanel({ conversation, currentUid, onBack }: 
       setMessage("");
       void setTyping(conversation.id, currentUid, false);
     } catch {
-      setChatError("Message could not be sent. Make sure the Firebase Functions are deployed.");
+      setChatError("Message could not be sent. Check your Supabase connection and policies.");
     } finally {
       setSending(false);
     }

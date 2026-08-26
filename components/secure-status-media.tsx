@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ImageOff, LoaderCircle, Play } from "lucide-react";
-import { getBlob, ref } from "firebase/storage";
-import { storage } from "@/lib/firebase/client";
+import { privateMediaBucket, supabase } from "@/lib/supabase/client";
 import type { StoryStatus } from "@/lib/status/types";
 
 export default function SecureStatusMedia({ status, variant = "tile", autoPlay = false }: { status: StoryStatus; variant?: "tile" | "viewer"; autoPlay?: boolean }) {
@@ -13,8 +12,10 @@ export default function SecureStatusMedia({ status, variant = "tile", autoPlay =
   useEffect(() => {
     let active = true;
     let currentUrl: string | null = null;
-    void getBlob(ref(storage, status.storagePath))
-      .then((blob) => {
+    void supabase.storage.from(privateMediaBucket).download(status.storagePath)
+      .then(({ data, error }) => {
+        if (error || !data) throw error ?? new Error("Media unavailable");
+        const blob = data;
         currentUrl = URL.createObjectURL(blob);
         if (active) {
           setFailed(false);
@@ -46,8 +47,7 @@ export default function SecureStatusMedia({ status, variant = "tile", autoPlay =
     </div>;
   }
   return <>
-    {/* Authenticated Storage blobs are held in memory and cannot use the Next image optimizer. */}
-    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {/* Authenticated Storage blobs are held in memory and never written to disk by the app. */}
     <img src={objectUrl} alt={`${status.ownerDisplayName}'s status`} className={frameClass} />
   </>;
 }

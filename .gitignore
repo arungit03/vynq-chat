@@ -1,7 +1,6 @@
 node_modules/
-functions/node_modules/
-functions/lib/
-.next/
+.supabase/
+dist/
 out/
 build/
 *.tsbuildinfo
@@ -9,4 +8,3 @@ build/
 !.env.example
 *.log
 npm-debug.log*
-firebase-debug.log

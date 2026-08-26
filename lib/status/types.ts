@@ -1,4 +1,4 @@
-import type { Timestamp } from "firebase/firestore";
+import type { Timestamp } from "@/lib/time";
 import type { ChatMediaKind } from "@/lib/chat/types";
 
 export type StoryStatus = {

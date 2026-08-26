@@ -2,25 +2,31 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { AtSign, ArrowRight, LoaderCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/routing";
 import AuthField from "@/components/auth/auth-field";
 import AuthLoadingScreen from "@/components/auth/auth-loading-screen";
 import AuthShell from "@/components/auth/auth-shell";
 import { claimUsernameForCurrentUser, getAuthErrorMessage, normalizeUsername, suggestedUsernameForUser, validateUsername } from "@/lib/auth/auth-actions";
 import { useAuth } from "@/lib/auth/auth-provider";
+import { fetchProfileByUid } from "@/lib/social/social-actions";
 
 export default function CompleteProfilePage() {
   const router = useRouter();
-  const { ready, status, user, signOutUser } = useAuth();
+  const { ready, status, user, completingOAuth, signOutUser } = useAuth();
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || completingOAuth) return;
     if (status === "signed-out") router.replace("/login");
     if (status === "unverified") router.replace("/verify-email");
-  }, [ready, router, status]);
+    if (status === "authenticated" && user) {
+      void fetchProfileByUid(user.uid).then((profile) => {
+        if (profile?.username) router.replace("/home");
+      }).catch(() => undefined);
+    }
+  }, [ready, router, status, user, completingOAuth]);
 
   if (!ready || !user || status !== "authenticated") {
     return <AuthLoadingScreen message="Preparing your profile..." />;

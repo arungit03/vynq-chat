@@ -2,8 +2,7 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { Camera, FileImage, LoaderCircle, Send, Video, X } from "lucide-react";
-import { ref, uploadBytesResumable, type UploadTask } from "firebase/storage";
-import { storage } from "@/lib/firebase/client";
+import { privateMediaBucket, supabase } from "@/lib/supabase/client";
 import { formatMediaSize, prepareMedia, type PreparedMedia } from "@/lib/chat/media";
 import { abortStatusUpload, createStatusUpload, finalizeStatusUpload, getStatusErrorMessage } from "@/lib/status/status-actions";
 import type { StatusUploadTicket } from "@/lib/status/types";
@@ -20,7 +19,6 @@ export default function StatusComposer({ open, onClose, onShared, onError, error
   const cameraInput = useRef<HTMLInputElement>(null);
   const videoInput = useRef<HTMLInputElement>(null);
   const previewUrl = useRef<string | null>(null);
-  const uploadTask = useRef<UploadTask | null>(null);
   const activeTicket = useRef<StatusUploadTicket | null>(null);
   const cancelled = useRef(false);
 
@@ -38,7 +36,6 @@ export default function StatusComposer({ open, onClose, onShared, onError, error
   const close = () => {
     if (uploading) {
       cancelled.current = true;
-      uploadTask.current?.cancel();
       if (activeTicket.current) void abortStatusUpload(activeTicket.current.statusId);
       activeTicket.current = null;
       setUploading(false);
@@ -81,25 +78,22 @@ export default function StatusComposer({ open, onClose, onShared, onError, error
         durationSeconds: draft.durationSeconds,
       });
       activeTicket.current = ticket;
-      const task = uploadBytesResumable(ref(storage, ticket.storagePath), draft.file, {
+      setProgress(20);
+      const { error: uploadError } = await supabase.storage.from(privateMediaBucket).upload(ticket.storagePath, draft.file, {
         contentType: draft.file.type,
-        cacheControl: "private, max-age=0, no-store",
-        customMetadata: { statusId: ticket.statusId },
+        cacheControl: "0",
+        upsert: false,
       });
-      uploadTask.current = task;
-      await new Promise<void>((resolve, reject) => task.on("state_changed", (snapshot) => {
-        setProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
-      }, reject, () => resolve()));
+      if (uploadError) throw uploadError;
+      setProgress(100);
       await finalizeStatusUpload(ticket.statusId);
       activeTicket.current = null;
-      uploadTask.current = null;
       clearDraft();
       onShared();
       onClose();
     } catch (error) {
       if (ticket) void abortStatusUpload(ticket.statusId);
       activeTicket.current = null;
-      uploadTask.current = null;
       if (!cancelled.current) onError(getStatusErrorMessage(error));
     } finally {
       setUploading(false);
@@ -123,8 +117,7 @@ export default function StatusComposer({ open, onClose, onShared, onError, error
         {draft ? <>
           <div className="mx-5 overflow-hidden rounded-[20px] bg-ink">
             {draft.kind === "image" ? <>
-              {/* Object URLs are private, in-memory previews and cannot use the Next image optimizer. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {/* Object URLs are private, in-memory previews and stay in browser memory. */}
               <img src={draft.previewUrl} alt="Selected status preview" className="max-h-[52svh] w-full object-contain" />
             </> : <video src={draft.previewUrl} controls playsInline preload="metadata" className="max-h-[52svh] w-full" />}
           </div>

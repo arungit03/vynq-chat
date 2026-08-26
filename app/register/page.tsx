@@ -1,14 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
+import { Link, useRouter } from "@/lib/routing";
 import { AtSign, ArrowRight, Mail } from "lucide-react";
-import { useRouter } from "next/navigation";
 import AuthField from "@/components/auth/auth-field";
 import AuthShell from "@/components/auth/auth-shell";
-import PasswordInput from "@/components/auth/password-input";
 import GoogleIcon from "@/components/auth/google-icon";
-import { getAuthErrorMessage, normalizeUsername, registerWithUsername, signInWithGoogle, validateUsername } from "@/lib/auth/auth-actions";
+import { getAuthErrorMessage, normalizeUsername, registerWithUsername, sendEmailOtp, signInWithGoogle, validateUsername } from "@/lib/auth/auth-actions";
 import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function RegisterPage() {
@@ -40,7 +38,9 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      await registerWithUsername({ username: cleanUsername, email, password });
+      await sendEmailOtp(email);
+      window.localStorage.setItem("vynq_pending_username", cleanUsername);
+      window.localStorage.setItem("vynq_pending_verification_email", email.trim());
       router.replace("/verify-email");
     } catch (submitError) {
       setError(getAuthErrorMessage(submitError));
@@ -53,8 +53,7 @@ export default function RegisterPage() {
     setGoogleLoading(true);
     setError("");
     try {
-      const result = await signInWithGoogle();
-      router.replace(result.needsUsername ? "/complete-profile" : "/home");
+      await signInWithGoogle();
     } catch (googleError) {
       setGoogleLoading(false);
       setError(getAuthErrorMessage(googleError));
@@ -67,9 +66,8 @@ export default function RegisterPage() {
         <AuthField label="Username" icon={AtSign} value={username} onChange={(value) => setUsername(value.replace(/\s/g, ""))} placeholder="yourname" autoComplete="username" hint={usernameError ? <span className="text-[#b74d56]">{usernameError}</span> : "unique"} />
         <p className="-mt-1 px-1 text-[10px] leading-4 text-ink-faint">3–24 characters · lowercase letters, numbers, periods, or underscores</p>
         <AuthField label="Email address" icon={Mail} value={email} onChange={setEmail} placeholder="you@example.com" type="email" autoComplete="email" />
-        <div><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-bold text-ink">Password</span><span className="text-[10px] font-medium text-ink-faint">6+ characters</span></div><PasswordInput value={password} onChange={setPassword} placeholder="Create a password" autoComplete="new-password" /></div>
         {error ? <p role="alert" className="rounded-2xl border border-danger/25 bg-danger-soft px-3.5 py-3 text-[11px] font-semibold leading-4 text-danger">{error}</p> : null}
-        <button disabled={loading} type="submit" className="group flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-brand text-[12px] font-bold text-white shadow-[0_12px_24px_rgba(92,141,246,0.24)] transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Creating your identity…" : "Create account"}<ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" /></button>
+        <button disabled={loading} type="submit" className="group flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-brand text-[12px] font-bold text-white shadow-[0_12px_24px_rgba(92,141,246,0.24)] transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Sending your code…" : "Send code"}<ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" /></button>
       </form>
       <div className="my-5 flex items-center gap-3 text-[10px] font-semibold text-ink-faint"><span className="h-px flex-1 bg-line" /> or sign up with <span className="h-px flex-1 bg-line" /></div>
       <button disabled={loading || googleLoading} type="button" onClick={() => void continueWithGoogle()} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-line bg-white text-[12px] font-bold text-ink-soft transition hover:border-brand/25 hover:bg-brand-pale hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-60"><GoogleIcon /> {googleLoading ? "Connecting Google..." : "Continue with Google"}</button>

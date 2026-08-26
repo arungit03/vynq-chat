@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/routing";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,

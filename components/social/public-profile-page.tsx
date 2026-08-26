@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { Link } from "@/lib/routing";
 import { ArrowLeft, Check, Clock3, LoaderCircle, LockKeyhole, UserCheck, UserPlus, UserRoundX, Users } from "lucide-react";
 import { fetchProfileByUsername, fetchRelationship, getSocialErrorMessage, normalizeUsername, sendFollowRequest } from "@/lib/social/social-actions";
 import type { RelationshipStatus, SocialProfile } from "@/lib/social/types";

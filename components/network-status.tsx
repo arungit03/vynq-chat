@@ -23,7 +23,7 @@ export default function NetworkStatus() {
       activeRequest = request;
       const timeout = window.setTimeout(() => request.abort(), 3_000);
       try {
-        const response = await fetch("/api/health", {
+        const response = await fetch("/health.json", {
           cache: "no-store",
           signal: request.signal,
         });

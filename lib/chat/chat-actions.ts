@@ -1,168 +1,151 @@
-import { httpsCallable } from "firebase/functions";
-import {
-  collection,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  Timestamp,
-  updateDoc,
-  where,
-  type DocumentData,
-  type QueryDocumentSnapshot,
-} from "firebase/firestore";
-import {
-  onDisconnect,
-  onValue,
-  ref,
-  remove,
-  serverTimestamp as rtdbServerTimestamp,
-  set,
-} from "firebase/database";
-import { db, functions, rtdb } from "@/lib/firebase/client";
+import { privateMediaBucket, supabase } from "@/lib/supabase/client";
+import { isoNow, Timestamp, toTimestamp } from "@/lib/time";
 import type { ChatMediaKind, ChatMessage, ConversationMeta, MediaUploadTicket, PresenceState } from "@/lib/chat/types";
 
 const MESSAGE_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
-function messageFromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): ChatMessage {
-  const data = snapshot.data();
+type MessageRow = {
+  id: string;
+  sender_uid: string;
+  type: "text" | "image" | "video";
+  text: string | null;
+  storage_path: string | null;
+  content_type: string | null;
+  bytes: number | null;
+  duration_seconds: number | null;
+  created_at: string | null;
+  expires_at: string | null;
+  read_at: string | null;
+};
+
+function messageFromRow(row: MessageRow): ChatMessage {
   return {
-    id: snapshot.id,
-    senderUid: String(data.senderUid ?? ""),
-    type: data.type === "image" || data.type === "video" ? data.type : "text",
-    text: typeof data.text === "string" ? data.text : null,
-    storagePath: typeof data.storagePath === "string" ? data.storagePath : null,
-    contentType: typeof data.contentType === "string" ? data.contentType : null,
-    bytes: typeof data.bytes === "number" ? data.bytes : null,
-    durationSeconds: typeof data.durationSeconds === "number" ? data.durationSeconds : null,
-    createdAt: data.createdAt ?? null,
-    expiresAt: data.expiresAt ?? null,
-    readAt: data.readAt ?? null,
+    id: row.id,
+    senderUid: row.sender_uid,
+    type: row.type,
+    text: row.text,
+    storagePath: row.storage_path,
+    contentType: row.content_type,
+    bytes: row.bytes,
+    durationSeconds: row.duration_seconds,
+    createdAt: toTimestamp(row.created_at),
+    expiresAt: toTimestamp(row.expires_at),
+    readAt: toTimestamp(row.read_at),
   };
 }
 
-function conversationMetaFromData(id: string, data: DocumentData): ConversationMeta {
+function conversationMetaFromRow(row: { id: string; member_uids: string[]; status: "active" | "closed"; last_message_at: string | null; last_message_preview: string | null; updated_at: string | null }): ConversationMeta {
   return {
-    id,
-    memberUids: Array.isArray(data.memberUids) ? data.memberUids.filter((uid): uid is string => typeof uid === "string") : [],
-    status: data.status === "closed" ? "closed" : "active",
-    lastMessageAt: data.lastMessageAt ?? null,
-    lastMessagePreview: typeof data.lastMessagePreview === "string" ? data.lastMessagePreview : null,
-    updatedAt: data.updatedAt ?? null,
+    id: row.id,
+    memberUids: row.member_uids,
+    status: row.status,
+    lastMessageAt: toTimestamp(row.last_message_at),
+    lastMessagePreview: row.last_message_preview,
+    updatedAt: toTimestamp(row.updated_at),
   };
 }
 
 export function listenToMessages(conversationId: string, onMessages: (messages: ChatMessage[]) => void, onError: (error: Error) => void) {
-  const messagesRef = collection(db, "conversations", conversationId, "messages");
-  const messagesQuery = query(
-    messagesRef,
-    where("expiresAt", ">", Timestamp.fromMillis(Date.now())),
-    orderBy("createdAt", "asc"),
-  );
-
-  return onSnapshot(
-    messagesQuery,
-    (snapshot) => onMessages(snapshot.docs.map(messageFromSnapshot)),
-    onError,
-  );
+  const refresh = async () => {
+    const { data, error } = await supabase.from("messages").select("id, sender_uid, type, text, storage_path, content_type, bytes, duration_seconds, created_at, expires_at, read_at").eq("conversation_id", conversationId).eq("upload_status", "ready").gt("expires_at", isoNow()).order("created_at", { ascending: true });
+    if (error) onError(error);
+    else onMessages((data as MessageRow[]).map(messageFromRow));
+  };
+  void refresh();
+  const channel = supabase.channel(`messages:${conversationId}`).on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, () => void refresh()).subscribe((status) => {
+    if (status === "CHANNEL_ERROR") onError(new Error("Realtime messages are unavailable."));
+  });
+  return () => { void supabase.removeChannel(channel); };
 }
 
 export function listenToConversationMeta(conversationId: string, onMeta: (meta: ConversationMeta | null) => void, onError: (error: Error) => void) {
-  return onSnapshot(
-    doc(db, "conversations", conversationId),
-    (snapshot) => onMeta(snapshot.exists() ? conversationMetaFromData(snapshot.id, snapshot.data()) : null),
-    onError,
-  );
+  const refresh = async () => {
+    const { data, error } = await supabase.from("conversations").select("id, member_uids, status, last_message_at, last_message_preview, updated_at").eq("id", conversationId).maybeSingle();
+    if (error) onError(error);
+    else onMeta(data ? conversationMetaFromRow(data as Parameters<typeof conversationMetaFromRow>[0]) : null);
+  };
+  void refresh();
+  const channel = supabase.channel(`conversation:${conversationId}`).on("postgres_changes", { event: "*", schema: "public", table: "conversations", filter: `id=eq.${conversationId}` }, () => void refresh()).subscribe();
+  return () => { void supabase.removeChannel(channel); };
 }
 
 export async function sendTextMessage(conversationId: string, text: string) {
-  const callable = httpsCallable<{ conversationId: string; text: string }, { messageId: string }>(functions, "sendMessage");
-  return callable({ conversationId, text: text.trim() });
+  const { data, error } = await supabase.rpc("send_message", { p_conversation_id: conversationId, p_text: text.trim() });
+  if (error) throw error;
+  return { data: { messageId: String(data) } };
 }
 
 export async function createMediaUpload(conversationId: string, media: { kind: ChatMediaKind; contentType: string; bytes: number; durationSeconds: number | null }) {
-  const callable = httpsCallable<
-    { conversationId: string; type: ChatMediaKind; contentType: string; bytes: number; durationSeconds: number | null },
-    MediaUploadTicket
-  >(functions, "createMediaUpload");
-  const result = await callable({ conversationId, type: media.kind, contentType: media.contentType, bytes: media.bytes, durationSeconds: media.durationSeconds });
-  return result.data;
+  const { data, error } = await supabase.rpc("create_media_message", { p_conversation_id: conversationId, p_type: media.kind, p_content_type: media.contentType, p_bytes: media.bytes, p_duration: media.durationSeconds });
+  if (error) throw error;
+  return data as MediaUploadTicket;
 }
 
-export async function finalizeMediaUpload(conversationId: string, messageId: string) {
-  const callable = httpsCallable<{ conversationId: string; messageId: string }, { messageId: string }>(functions, "finalizeMediaUpload");
-  const result = await callable({ conversationId, messageId });
-  return result.data;
+export async function finalizeMediaUpload(_conversationId: string, messageId: string) {
+  const { data, error } = await supabase.rpc("finalize_media_message", { p_message_id: messageId });
+  if (error) throw error;
+  return data as { messageId: string };
 }
 
-export async function abortMediaUpload(conversationId: string, messageId: string) {
-  const callable = httpsCallable<{ conversationId: string; messageId: string }, { cancelled: true }>(functions, "abortMediaUpload");
-  const result = await callable({ conversationId, messageId });
-  return result.data;
+export async function abortMediaUpload(_conversationId: string, messageId: string) {
+  const { data, error } = await supabase.rpc("abort_media_message", { p_message_id: messageId });
+  if (error) throw error;
+  const storagePath = (data as { storagePath?: string | null })?.storagePath;
+  if (storagePath) await supabase.storage.from(privateMediaBucket).remove([storagePath]);
+  return { cancelled: true as const };
 }
 
-export async function markMessageRead(conversationId: string, messageId: string) {
-  await updateDoc(doc(db, "conversations", conversationId, "messages", messageId), {
-    readAt: serverTimestamp(),
-  });
+export async function markMessageRead(_conversationId: string, messageId: string) {
+  const { error } = await supabase.from("messages").update({ read_at: isoNow() }).eq("id", messageId);
+  if (error) throw error;
 }
 
 export function listenToPresence(uid: string, onPresence: (presence: PresenceState | null) => void, onError: (error: Error) => void) {
-  return onValue(
-    ref(rtdb, `presence/${uid}`),
-    (snapshot) => {
-      const data = snapshot.val();
-      if (!data || (data.state !== "online" && data.state !== "offline")) {
-        onPresence(null);
-        return;
-      }
-      onPresence({ state: data.state, lastChanged: typeof data.lastChanged === "number" ? data.lastChanged : undefined });
-    },
-    onError,
-  );
-}
-
-export function listenToTyping(conversationId: string, uid: string, onTyping: (typing: boolean) => void, onError: (error: Error) => void) {
-  return onValue(
-    ref(rtdb, `typing/${conversationId}/${uid}`),
-    (snapshot) => {
-      const data = snapshot.val();
-      const updatedAt = typeof data?.updatedAt === "number" ? data.updatedAt : Date.now();
-      onTyping(Boolean(data?.isTyping) && Date.now() - updatedAt < 5000);
-    },
-    onError,
-  );
+  const publish = (data: { state?: string; last_changed?: string } | null) => {
+    if (!data || (data.state !== "online" && data.state !== "offline")) return onPresence(null);
+    onPresence({ state: data.state, lastChanged: toTimestamp(data.last_changed)?.toMillis() });
+  };
+  void supabase.from("presence").select("state, last_changed").eq("uid", uid).maybeSingle().then(({ data, error }) => {
+    if (error) onError(error); else publish(data as { state?: string; last_changed?: string } | null);
+  });
+  const channel = supabase.channel(`presence:${uid}`).on("postgres_changes", { event: "*", schema: "public", table: "presence", filter: `uid=eq.${uid}` }, (payload) => publish((payload.new ?? null) as { state?: string; last_changed?: string } | null)).subscribe();
+  return () => { void supabase.removeChannel(channel); };
 }
 
 export function startPresence(uid: string) {
-  const connectionRef = ref(rtdb, ".info/connected");
-  const presenceRef = ref(rtdb, `presence/${uid}`);
-  const unsubscribe = onValue(connectionRef, (snapshot) => {
-    if (snapshot.val() !== true) return;
-    void onDisconnect(presenceRef).set({ state: "offline", lastChanged: rtdbServerTimestamp() }).then(() => {
-      void set(presenceRef, { state: "online", lastChanged: rtdbServerTimestamp() });
-    });
-  });
-
+  const mark = () => void supabase.from("presence").upsert({ uid, state: "online", last_changed: isoNow() });
+  const offline = () => void supabase.from("presence").upsert({ uid, state: "offline", last_changed: isoNow() });
+  mark();
+  const timer = window.setInterval(mark, 30_000);
+  window.addEventListener("pagehide", offline);
   return () => {
-    unsubscribe();
-    void set(presenceRef, { state: "offline", lastChanged: rtdbServerTimestamp() });
+    window.clearInterval(timer);
+    window.removeEventListener("pagehide", offline);
+    offline();
   };
 }
 
-export async function setTyping(conversationId: string, uid: string, isTyping: boolean) {
-  const typingRef = ref(rtdb, `typing/${conversationId}/${uid}`);
-  if (!isTyping) return remove(typingRef);
-  await onDisconnect(typingRef).remove();
-  return set(typingRef, {
-    isTyping,
-    updatedAt: rtdbServerTimestamp(),
+export function listenToTyping(conversationId: string, uid: string, onTyping: (typing: boolean) => void, onError: (error: Error) => void) {
+  const publish = (data: { is_typing?: boolean; updated_at?: string } | null) => onTyping(Boolean(data?.is_typing) && Date.now() - (toTimestamp(data?.updated_at)?.toMillis() ?? Date.now()) < 5000);
+  void supabase.from("typing").select("is_typing, updated_at").eq("conversation_id", conversationId).eq("uid", uid).maybeSingle().then(({ data, error }) => {
+    if (error) onError(error); else publish(data as { is_typing?: boolean; updated_at?: string } | null);
   });
+  const channel = supabase.channel(`typing:${conversationId}:${uid}`).on("postgres_changes", { event: "*", schema: "public", table: "typing", filter: `conversation_id=eq.${conversationId}` }, (payload) => publish((payload.new ?? null) as { is_typing?: boolean; updated_at?: string } | null)).subscribe();
+  return () => { void supabase.removeChannel(channel); };
+}
+
+export async function setTyping(conversationId: string, uid: string, isTyping: boolean) {
+  if (!isTyping) {
+    const { error } = await supabase.from("typing").delete().eq("conversation_id", conversationId).eq("uid", uid);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from("typing").upsert({ conversation_id: conversationId, uid, is_typing: true, updated_at: isoNow() });
+  if (error) throw error;
 }
 
 export function formatChatTime(timestamp: Timestamp | null) {
-  if (!timestamp) return "Sending…";
+  if (!timestamp) return "Sending...";
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(timestamp.toDate());
 }
 

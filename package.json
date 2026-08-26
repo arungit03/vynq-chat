@@ -3,37 +3,40 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
+    "dev": "vite",
+    "build": "vite build",
+    "start": "vite preview",
     "lint": "eslint",
     "test": "npm run test:quality",
     "test:quality": "node scripts/quality-check.mjs",
-    "verify": "npm run test:quality && npm run lint && npm run build && npm --prefix functions run lint && npm --prefix functions run build",
-    "firebase:emulators": "node --use-system-ca ./node_modules/firebase-tools/lib/bin/firebase.js emulators:start",
-    "firebase:deploy": "node --use-system-ca ./node_modules/firebase-tools/lib/bin/firebase.js deploy",
-    "firebase:deploy:backend": "node --use-system-ca ./node_modules/firebase-tools/lib/bin/firebase.js deploy --only functions,firestore,storage,database --project vynq-chat",
-    "firebase:deploy:dry-run": "node --use-system-ca ./node_modules/firebase-tools/lib/bin/firebase.js deploy --only functions,firestore,storage,database --project vynq-chat --dry-run",
-    "firebase:apphosting:create": "node --use-system-ca ./node_modules/firebase-tools/lib/bin/firebase.js apphosting:backends:create --project vynq-chat --backend vynq-chat --primary-region us-central1 --root-dir .",
-    "firebase:apphosting:list": "node --use-system-ca ./node_modules/firebase-tools/lib/bin/firebase.js apphosting:backends:list --project vynq-chat"
+    "verify": "npm run test:quality && npm run lint && npm run build",
+    "supabase:login": "supabase login",
+    "supabase:db:push": "supabase db push",
+    "supabase:functions:serve": "supabase functions serve cleanup-expired",
+    "supabase:functions:deploy": "supabase functions deploy cleanup-expired --no-verify-jwt",
+    "firebase:login": "firebase login",
+    "firebase:deploy": "vite build && firebase deploy --only hosting"
   },
   "dependencies": {
+    "@supabase/supabase-js": "latest",
     "firebase": "^12.18.0",
     "lucide-react": "latest",
-    "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-router-dom": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
+    "@eslint/js": "latest",
     "@tailwindcss/postcss": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
     "eslint": "latest",
-    "eslint-config-next": "latest",
-    "firebase-tools": "^15.28.1",
     "postcss": "latest",
     "tailwindcss": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "typescript-eslint": "latest"
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/routing";
 import { ArrowUpRight, Check, LockKeyhole, MessageCircle, TimerReset } from "lucide-react";
 
 function BrandLockup() {

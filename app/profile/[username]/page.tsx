@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams } from "@/lib/routing";
 import ProtectedRoute from "@/components/auth/protected-route";
 import PublicProfilePage from "@/components/social/public-profile-page";
 import { useAuth } from "@/lib/auth/auth-provider";
