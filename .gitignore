@@ -1,10 +1,32 @@
-node_modules/
-.supabase/
-dist/
-out/
-build/
-*.tsbuildinfo
-.env*
+# Build output
+dist
+dist-ssr
+*.local
+
+# Env (keep .example committed)
+.env
+.env.*
 !.env.example
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Functions deps
+functions/node_modules
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
 *.log
-npm-debug.log*
+.eslintcache
+
+# Dependencies
+node_modules
+
+# Typescript
+*.tsbuildinfo

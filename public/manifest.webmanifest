@@ -1,20 +1,36 @@
 {
   "name": "Vynq-chat",
   "short_name": "Vynq",
-  "description": "Private conversations that do not stay forever.",
-  "id": "/",
+  "description": "Private conversations. Less digital baggage. Privacy-focused messaging with automatic data expiration.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
-  "lang": "en",
-  "dir": "ltr",
-  "background_color": "#f4f8fc",
-  "theme_color": "#5c8df6",
-  "orientation": "any",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#3b91f6",
   "categories": ["social", "communication"],
   "icons": [
-    { "src": "/icons/vynq-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/vynq-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icons/vynq-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/vynq-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Search people",
+      "url": "/search"
+    },
+    {
+      "name": "Status",
+      "url": "/status"
+    }
   ]
 }

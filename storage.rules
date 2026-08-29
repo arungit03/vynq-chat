@@ -1,0 +1,59 @@
+rules_version = '2';
+
+// Vynq-chat Storage security rules.
+// Paths:
+//   /profilePictures/{uid}/{file}
+//   /chatMedia/{chatId}/{messageId}/{file}
+//   /statusMedia/{uid}/{statusId}/{file}
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    // File-type + size guards
+    function isAllowedImage() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp)')
+        && request.resource.size < 10 * 1024 * 1024;
+    }
+    function isAllowedVideo() {
+      return request.resource.contentType.matches('video/(mp4|webm|quicktime)')
+        && request.resource.size < 30 * 1024 * 1024;
+    }
+
+    // ---- Profile pictures ----
+    match /profilePictures/{ownerUid}/{fileId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && uid() == ownerUid
+        && (isAllowedImage())
+        && fileId.matches('^[A-Za-z0-9_.\-]+$');
+    }
+
+    // ---- Chat media (only participants) ----
+    match /chatMedia/{chatId}/{messageId}/{fileId} {
+      // Read only if participant of the chat (resolved via Firestore).
+      allow read: if isSignedIn()
+        && exists(/databases/$(database)/documents/chats/$(chatId))
+        && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      allow write: if isSignedIn()
+        && exists(/databases/$(database)/documents/chats/$(chatId))
+        && uid() in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        && (isAllowedImage() || isAllowedVideo())
+        && fileId.matches('^[A-Za-z0-9_.\-]+$');
+    }
+
+    // ---- Status media (owner uploads; friends read) ----
+    match /statusMedia/{ownerUid}/{statusId}/{fileId} {
+      allow write: if isSignedIn()
+        && uid() == ownerUid
+        && (isAllowedImage() || isAllowedVideo())
+        && fileId.matches('^[A-Za-z0-9_.\-]+$');
+      // Reading cross-references friendships collection (doc id = sorted pair).
+      allow read: if isSignedIn()
+        && (uid() == ownerUid
+            || exists(/databases/$(database)/documents/friendships/$(uid() < ownerUid ? uid() + '_' + ownerUid : ownerUid + '_' + uid())));
+    }
+  }
+}

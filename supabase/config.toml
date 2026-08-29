@@ -1,4 +1,0 @@
-project_id = "whczpkjyiehpqsplddep"
-
-[functions.cleanup-expired]
-verify_jwt = false
